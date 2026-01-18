@@ -58,33 +58,31 @@
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
-        // [중요 변경] ACESFilmicToneMapping 적용으로 색상 날아감 방지 및 자연스러운 대비 표현
+        // ACESFilmicToneMapping 적용으로 색상 날아감 방지 및 자연스러운 대비 표현
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.0;
+        renderer.toneMappingExposure = 0.7; // Exposure 더 낮춰 전체 밝기 조절
         document.body.appendChild(renderer.domElement);
 
         // 2. Post-Processing (Bloom 최적화)
         const renderScene = new RenderPass(scene, camera);
-        // [중요 변경] threshold를 높여서 행성 표면이 아닌 태양처럼 정말 밝은 곳만 빛나게 함
-        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.6);
+        // threshold를 더 높여서 태양처럼 정말 밝은 곳만 빛나게 함
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.0, 0.2, 0.9); // strength와 radius 더 낮춤, threshold 높임
         const composer = new EffectComposer(renderer);
         composer.addPass(renderScene);
         composer.addPass(bloomPass);
 
-        // 3. Procedural Sun (기존 유지)
+        // 3. Procedural Sun
         const sunVertexShader = `
             varying vec2 vUv; varying vec3 vNormal;
             void main() { vUv = uv; vNormal = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
         `;
         const sunFragmentShader = `
             uniform float time; varying vec2 vUv; varying vec3 vNormal;
-            // ... (노이즈 함수 생략 - 이전과 동일) ...
             vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; } vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; } vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); } float snoise(vec3 v){ const vec2 C = vec2(1.0/6.0, 1.0/3.0); const vec4 D = vec4(0.0, 0.5, 1.0, 2.0); vec3 i = floor(v + dot(v, C.yyy)); vec3 x0 = v - i + dot(i, C.xxx); vec3 g = step(x0.yzx, x0.xyz); vec3 l = 1.0 - g; vec3 i1 = min( g.xyz, l.zxy ); vec3 i2 = max( g.xyz, l.zxy ); vec3 x1 = x0 - i1 + C.xxx; vec3 x2 = x0 - i2 + C.yyy; vec3 x3 = x0 - D.yyy; i = mod289(i); vec4 p = permute( permute( permute( i.z + vec4(0.0, i1.z, i2.z, 1.0 )) + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) + i.x + vec4(0.0, i1.x, i2.x, 1.0 )); float n_ = 0.142857142857; vec3 ns = n_ * D.wyz - p.xyz * n_; vec4 j = p - 49.0 * floor(p * n_ * n_); vec4 x_ = floor(j * n_); vec4 y_ = floor(j - 7.0 * x_ ); vec4 x = x_ * n_ + n_ / 2.0; vec4 y = y_ * n_ + n_ / 2.0; vec4 h = 1.0 - abs(x) - abs(y); vec4 b0 = vec4( x.xy, y.xy ); vec4 b1 = vec4( x.zw, y.zw ); vec4 s0 = floor(b0)*2.0 + 1.0; vec4 s1 = floor(b1)*2.0 + 1.0; vec4 sh = -step(h, vec4(0.0)); vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy; vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww; vec3 p0 = vec3(a0.xy,h.x); vec3 p1 = vec3(a0.zw,h.y); vec3 p2 = vec3(a1.xy,h.z); vec3 p3 = vec3(a1.zw,h.w); vec4 norm = 1.79284291400159 - 0.85373472095314 * vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)); p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w; vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0); m = m * m; return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3) ) ); }
             void main() {
-                float n = snoise(vec3(vUv * 6.0, time * 0.8)); // 노이즈 속도 및 밀도 약간 증가
-                vec3 color = mix(vec3(1.0, 0.2, 0.0), vec3(1.0, 0.9, 0.3), n);
-                // 아주 밝게 처리하여 블룸 효과 극대화
-                gl_FragColor = vec4(color * 3.0, 1.0); 
+                float n = snoise(vec3(vUv * 6.0, time * 0.8));
+                vec3 color = mix(vec3(1.0, 0.95, 0.8), vec3(1.0, 0.9, 0.6), n); // 빨간 효과 줄이고 더 자연스러운 노란/주황 톤으로 변경
+                gl_FragColor = vec4(color * 1.2, 1.0); // 밝기 더 줄임 (1.5 -> 1.2)
             }
         `;
         const sunMaterial = new THREE.ShaderMaterial({
@@ -97,45 +95,42 @@
 
         // 4. Planet System Setup
         const textureLoader = new THREE.TextureLoader();
-        const getTex = (name) => textureLoader.load(`https://cdn.jsdelivr.net/gh/mrdoob/three.js@master/examples/textures/planets/${name}`);
+        const getTex = (name) => textureLoader.load(`https://raw.githubusercontent.com/yogeshkumarsaini/Solar-System/main/img/${name}`);
 
         const planetData = [
-            { name: "Mercury", size: 4, dist: 80, speed: 0.015, tex: 'mercury.jpg' },
-            { name: "Venus", size: 8, dist: 120, speed: 0.01, tex: 'venus_atmosphere.jpg' },
-            { name: "Earth", size: 8.5, dist: 170, speed: 0.007, tex: 'earth_atmos_2048.jpg' },
-            { name: "Mars", size: 6, dist: 220, speed: 0.005, tex: 'mars_1k_color.jpg' },
-            { name: "Jupiter", size: 22, dist: 320, speed: 0.002, tex: 'jupiter_1k_color.jpg' },
-            { name: "Saturn", size: 18, dist: 420, speed: 0.0015, tex: 'saturn_1k_color.jpg', ring: true }
+            { name: "Mercury", size: 4, dist: 80, speed: 0.015, tex: 'mercury_hd.jpg' },
+            { name: "Venus", size: 8, dist: 120, speed: 0.01, tex: 'venus_hd.jpg' },
+            { name: "Earth", size: 8.5, dist: 170, speed: 0.007, tex: 'earth_hd.jpg' },
+            { name: "Mars", size: 6, dist: 220, speed: 0.005, tex: 'mars_hd.jpg' },
+            { name: "Jupiter", size: 22, dist: 320, speed: 0.002, tex: 'jupiter_hd.jpg' },
+            { name: "Saturn", size: 18, dist: 420, speed: 0.0015, tex: 'saturn_hd.jpg', ring: true }
         ];
 
-        // [중요 변경] 대기 쉐이더 수정: 파란색 틴트 제거하고 은은한 흰색/회색 림 라이트로 변경
+        // 대기 쉐이더: 은은한 흰색/회색 림 라이트
         const atmosphereShader = {
             vertex: `varying vec3 vNormal; void main() { vNormal = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-            fragment: `varying vec3 vNormal; void main() { float intensity = pow(0.6 - dot(vNormal, vec3(0, 0, 1.0)), 4.0); gl_FragColor = vec4(0.8, 0.8, 0.9, 0.5) * intensity; }`
+            fragment: `varying vec3 vNormal; void main() { float intensity = pow(0.6 - dot(vNormal, vec3(0, 0, 1.0)), 4.0); gl_FragColor = vec4(0.8, 0.8, 0.9, 0.3) * intensity; }` // opacity 약간 낮춤 (0.5 -> 0.3)으로 반사광 줄임
         };
 
         const planetMeshes = [];
-        const clickTargets = []; // 클릭 감지용 배열
+        const clickTargets = [];
 
         planetData.forEach(p => {
-            // Orbit Path
             const orbit = new THREE.Mesh(new THREE.TorusGeometry(p.dist, 0.2, 16, 128), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.08 }));
             orbit.rotation.x = Math.PI / 2;
             scene.add(orbit);
 
-            // [중요 변경] 행성 재질 최적화: 금속성 제거(metalness: 0), 거칠기 조절로 반사광 감소
             const mesh = new THREE.Mesh(
                 new THREE.SphereGeometry(p.size, 64, 64),
                 new THREE.MeshStandardMaterial({ 
                     map: getTex(p.tex), 
-                    roughness: 0.9, // 매트한 질감
-                    metalness: 0.0  // 금속성 제거
+                    roughness: 1.0, // roughness 더 높여 (0.9 -> 1.0) 반사광 완전히 매트하게
+                    metalness: 0.0
                 })
             );
-            mesh.userData = { name: p.name }; // 클릭 시 이름 확인용
+            mesh.userData = { name: p.name };
             clickTargets.push(mesh);
             
-            // Atmosphere Glow
             const glow = new THREE.Mesh(new THREE.SphereGeometry(p.size * 1.1, 64, 64), new THREE.ShaderMaterial({
                 vertexShader: atmosphereShader.vertex,
                 fragmentShader: atmosphereShader.fragment,
@@ -145,7 +140,6 @@
 
             if (p.ring) {
                 const ring = new THREE.Mesh(new THREE.RingGeometry(p.size * 1.4, p.size * 2.5, 128), new THREE.MeshStandardMaterial({ 
-                    map: getTex('saturn_ring.png'), // 링 텍스처 적용 시도 (없으면 기본색)
                     color: 0xc0a080, side: THREE.DoubleSide, transparent: true, opacity: 0.8 
                 }));
                 ring.rotation.x = Math.PI / 2.1;
@@ -157,10 +151,9 @@
         });
 
         // 5. Lights & Stars
-        // [중요 변경] 광원 강도 조절: 너무 강했던 빛을 줄여서 텍스처 색상이 드러나게 함
-        const sunLight = new THREE.PointLight(0xffffff, 60000, 2000, 1.2);
+        const sunLight = new THREE.PointLight(0xffffff, 10000, 2000, 1.2); // 강도 더 줄임 (15000 -> 10000)
         scene.add(sunLight);
-        scene.add(new THREE.AmbientLight(0x333333)); // 환경광을 약간 높여 어두운 부분 디테일 확보
+        scene.add(new THREE.AmbientLight(0x666666)); // 환경광 약간 더 높임 (0x555555 -> 0x666666)
 
         const starGeo = new THREE.BufferGeometry();
         const starPos = []; for(let i=0; i<20000; i++) starPos.push((Math.random()-0.5)*4000, (Math.random()-0.5)*4000, (Math.random()-0.5)*4000);
@@ -174,7 +167,6 @@
         controls.maxDistance = 2000;
 
         window.addEventListener('click', (event) => {
-            // 마우스 좌표 정규화 (-1 to +1)
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
@@ -182,14 +174,12 @@
             const intersects = raycaster.intersectObjects(clickTargets);
 
             if (intersects.length > 0) {
-                // 행성 클릭 시
                 focusedTarget = intersects[0].object;
                 focusStatusUi.textContent = `FOCUSED: ${focusedTarget.userData.name}`;
                 focusStatusUi.style.color = '#00ff00';
             } else {
-                // 빈 공간 클릭 시 포커스 해제
                 focusedTarget = null;
-                controls.target.set(0, 0, 0); // 다시 태양 중심으로
+                controls.target.set(0, 0, 0);
                 focusStatusUi.textContent = `FOCUSED: NONE`;
                 focusStatusUi.style.color = '#ffcc00';
             }
@@ -209,9 +199,7 @@
                 p.mesh.rotation.y += 0.005;
             });
 
-            // [포커스 모드 핵심 로직]
             if (focusedTarget) {
-                // 카메라 컨트롤의 타겟을 현재 포커스된 행성의 실시간 위치로 업데이트
                 controls.target.copy(focusedTarget.position);
             }
 
